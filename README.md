@@ -51,7 +51,7 @@ Write tools carry MCP `readOnlyHint: false` / `destructiveHint` annotations so c
 Requires Node.js 20+.
 
 ```bash
-git clone https://github.com/RexGuard/mikrotik-mcp.git
+git clone https://github.com/RexGuard/MikroTik-MCP.git
 cd mikrotik-mcp
 npm install        # also builds into dist/
 ```
