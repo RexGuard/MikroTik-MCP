@@ -1,0 +1,30 @@
+# MikroTik MCP Server
+
+> Open-source Model Context Protocol (MCP) server that lets Claude and other AI assistants monitor and configure MikroTik RouterOS routers through the RouterOS REST API (v7) or binary API (v6/v7). TypeScript, Node.js 20+, MIT license.
+
+Key facts:
+- Repository: https://github.com/RexGuard/MikroTik-MCP
+- Transports: REST API over HTTPS (RouterOS 7.1+), binary API on ports 8728/8729 (RouterOS 6 and 7)
+- Clients: Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, any MCP client (stdio)
+- Safety: read-only mode (MIKROTIK_READ_ONLY=true), per-device readOnly, destructive tools annotated, reboot requires confirm=true
+- Multi-router: MIKROTIK_CONFIG or MIKROTIK_DEVICES JSON array; every tool accepts an optional `device`
+- It does not run inside the RouterOS console; it runs on a computer that can reach the router
+
+## Docs
+
+- [README](https://github.com/RexGuard/MikroTik-MCP/blob/main/README.md): install, router preparation, configuration, Claude setup, FAQ
+- [Example multi-device config](https://github.com/RexGuard/MikroTik-MCP/blob/main/examples/devices.example.json)
+
+## Tools
+
+- mikrotik_list_devices: configured routers
+- mikrotik_system_overview: identity, version, board, CPU/RAM/disk, uptime, clock, health, packages
+- mikrotik_interfaces, mikrotik_ip_addresses, mikrotik_routes, mikrotik_firewall_rules, mikrotik_dhcp_leases, mikrotik_wireless_clients, mikrotik_arp_table, mikrotik_logs: read state
+- mikrotik_ping, mikrotik_traceroute: diagnostics from the router
+- mikrotik_firewall_add_rule, mikrotik_address_list, mikrotik_backup, mikrotik_reboot: common changes
+- mikrotik_print, mikrotik_add, mikrotik_set, mikrotik_remove, mikrotik_set_enabled, mikrotik_run_command: any RouterOS menu or command
+
+## Optional
+
+- [MikroTik REST API docs](https://help.mikrotik.com/docs/display/ROS/REST+API)
+- [MikroTik API docs](https://help.mikrotik.com/docs/display/ROS/API)

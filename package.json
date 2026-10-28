@@ -1,21 +1,32 @@
 {
   "name": "mikrotik-mcp",
   "version": "0.1.0",
-  "description": "MCP server that lets Claude and other MCP clients manage MikroTik RouterOS devices over the REST API or binary API",
+  "description": "MikroTik MCP server: let Claude and other AI assistants monitor and configure MikroTik RouterOS routers via the REST API (v7) or binary API (v6/v7)",
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc -p .",
-    "test": "npm run build && node --test dist/test/",
+    "test": "npm run build && node --test dist/test/*.test.js",
     "start": "node dist/src/index.js",
     "prepare": "npm run build"
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "mikrotik",
     "routeros",
+    "routeros-api",
+    "routeros-rest-api",
+    "winbox",
+    "router",
+    "network-automation",
+    "firewall",
     "claude",
-    "model-context-protocol",
-    "network"
+    "claude-desktop",
+    "claude-code",
+    "ai",
+    "llm",
+    "cursor"
   ],
   "license": "MIT",
   "dependencies": {
@@ -33,7 +44,8 @@
   "files": [
     "dist/src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "llms.txt"
   ],
   "engines": {
     "node": ">=20"
@@ -41,5 +53,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RexGuard/MikroTik-MCP.git"
+  },
+  "homepage": "https://github.com/RexGuard/MikroTik-MCP#readme",
+  "bugs": {
+    "url": "https://github.com/RexGuard/MikroTik-MCP/issues"
   }
 }
