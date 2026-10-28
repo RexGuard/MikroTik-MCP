@@ -1,0 +1,20 @@
+[
+  {
+    "name": "home-gw",
+    "host": "192.168.88.1",
+    "username": "mcp",
+    "password": "change-me",
+    "transport": "rest",
+    "insecure": true
+  },
+  {
+    "name": "office-v6",
+    "host": "10.10.0.1",
+    "username": "mcp",
+    "password": "change-me",
+    "transport": "api",
+    "tls": true,
+    "insecure": true,
+    "readOnly": true
+  }
+]

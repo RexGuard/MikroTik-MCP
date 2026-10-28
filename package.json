@@ -1,0 +1,41 @@
+{
+  "name": "mikrotik-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets Claude and other MCP clients manage MikroTik RouterOS devices over the REST API or binary API",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "npm run build && node --test dist/test/",
+    "start": "node dist/src/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mikrotik",
+    "routeros",
+    "claude",
+    "model-context-protocol",
+    "network"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  },
+  "type": "module",
+  "bin": {
+    "mikrotik-mcp": "dist/src/index.js"
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}
