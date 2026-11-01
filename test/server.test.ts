@@ -4,7 +4,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ApiClient, encodeLength, encodeSentence, SentenceDecoder } from "../src/clients/api.js";
-import { DeviceRegistry, loadDevices } from "../src/config.js";
+import { readFileSync } from "node:fs";
+import net from "node:net";
+import { AddressInfo } from "node:net";
+import { configProblem, DeviceRegistry, loadDevices, parseAddress } from "../src/config.js";
+import { checkConnection, explainError } from "../src/diagnose.js";
 import { registerTools } from "../src/tools.js";
 import { MockRouter } from "./mock-router.js";
 
@@ -43,6 +47,54 @@ describe("config", () => {
       MIKROTIK_READ_ONLY: "true",
     });
     assert.deepEqual(devices.map((d) => [d.name, d.readOnly]), [["a", true], ["b", true]]);
+  });
+
+  it("picks the transport and TLS from the port", () => {
+    const pick = (env: Record<string, string>) => {
+      const [d] = loadDevices({ MIKROTIK_HOST: "r", ...env });
+      return [d.transport, d.port, d.tls];
+    };
+    assert.deepEqual(pick({ MIKROTIK_PORT: "8728" }), ["api", 8728, false]);
+    assert.deepEqual(pick({ MIKROTIK_PORT: "8729" }), ["api", 8729, true]);
+    assert.deepEqual(pick({ MIKROTIK_PORT: "443" }), ["rest", 443, true]);
+    assert.deepEqual(pick({ MIKROTIK_PORT: "80" }), ["rest", 80, false]);
+    assert.deepEqual(pick({}), ["rest", 443, true]);
+    assert.deepEqual(pick({ MIKROTIK_PORT: "18728" }), ["api", 18728, false]);
+    assert.deepEqual(pick({ MIKROTIK_TRANSPORT: "api" }), ["api", 8728, false]);
+    assert.deepEqual(pick({ MIKROTIK_TRANSPORT: "api", MIKROTIK_TLS: "true" }), ["api", 8729, true]);
+    assert.deepEqual(pick({ MIKROTIK_PORT: "8443", MIKROTIK_TRANSPORT: "rest" }), ["rest", 8443, true]);
+  });
+
+  it("accepts addresses pasted as URLs or host:port", () => {
+    assert.deepEqual(parseAddress("192.168.88.1"), { host: "192.168.88.1", port: undefined, scheme: undefined });
+    assert.deepEqual(parseAddress(" router.example.com:8729 "), { host: "router.example.com", port: 8729, scheme: undefined });
+    assert.deepEqual(parseAddress("https://10.0.0.1/webfig/"), { host: "10.0.0.1", port: undefined, scheme: "https" });
+    assert.deepEqual(parseAddress("[fe80::1]:8728"), { host: "fe80::1", port: 8728, scheme: undefined });
+    assert.deepEqual(parseAddress("fe80::1"), { host: "fe80::1", port: undefined, scheme: undefined });
+    assert.throws(() => parseAddress("ssh://r"));
+    const [d] = loadDevices({ MIKROTIK_HOST: "api-ssl://r.example.com", MIKROTIK_PORT: "8728" });
+    assert.deepEqual([d.host, d.transport, d.tls, d.port], ["r.example.com", "api", true, 8728]);
+    const [e] = loadDevices({ MIKROTIK_HOST: "r.example.com:443", MIKROTIK_PORT: "8728" });
+    assert.deepEqual([e.transport, e.port], ["rest", 443]);
+  });
+
+  it("ignores unfilled bundle placeholders", () => {
+    const [d] = loadDevices({
+      MIKROTIK_HOST: "10.0.0.1",
+      MIKROTIK_PORT: "${user_config.port}",
+      MIKROTIK_USERNAME: "${user_config.username}",
+      MIKROTIK_PASSWORD: "${user_config.password}",
+      MIKROTIK_INSECURE: "",
+    });
+    assert.deepEqual([d.port, d.username, d.password, d.insecure], [443, "admin", "", false]);
+    assert.deepEqual(loadDevices({ MIKROTIK_HOST: "${user_config.host}" }), []);
+  });
+
+  it("explains that WinBox's port cannot be used", () => {
+    const [d] = loadDevices({ MIKROTIK_HOST: "r:8291" });
+    assert.match(configProblem(d)!.message, /WinBox.*8728/s);
+    const registry = new DeviceRegistry([d]);
+    assert.throws(() => registry.resolve(), /WinBox/);
   });
 
   it("rejects duplicate names", () => {
@@ -87,6 +139,14 @@ for (const transport of ["rest", "api"] as const) {
       await client.close();
       await registry.closeAll();
       await close();
+    });
+
+    it("lists every tool in the Claude Desktop extension manifest", async () => {
+      const { tools } = await client.listTools();
+      const manifest = JSON.parse(readFileSync(new URL("../../manifest.json", import.meta.url), "utf8"));
+      const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+      assert.deepEqual(manifest.tools.map((t: { name: string }) => t.name).sort(), tools.map((t) => t.name).sort());
+      assert.equal(manifest.version, pkg.version);
     });
 
     it("lists tools with annotations", async () => {
@@ -180,6 +240,17 @@ for (const transport of ["rest", "api"] as const) {
       const e = await call("mikrotik_interfaces", { device: "badpw" });
       assert.equal(e.isError, true);
       assert.match(e.text, transport === "rest" ? /Unauthorized/ : /Login failed/);
+      assert.match(e.text, /Likely cause and fix: The router rejected the user name or password/);
+    });
+
+    it("checks the connection", async () => {
+      const good = await call("mikrotik_check_connection");
+      assert.equal(good.isError, false);
+      assert.equal(good.json.ok, true);
+      assert.equal(good.json.identity, router.menus.get("/system/identity")![0].name);
+      const bad = await call("mikrotik_check_connection", { device: "badpw" });
+      assert.equal(bad.isError, true);
+      assert.match(bad.text, /howToFix/);
     });
   });
 }
@@ -193,5 +264,64 @@ describe("ApiClient", () => {
     assert.deepEqual(results.map((r) => r.rows.length), [3, 1, 150]);
     await c.close();
     await srv.close();
+  });
+});
+
+describe("connection diagnostics", () => {
+  const device = (port: number, transport: "api" | "rest" = "api") =>
+    loadDevices({
+      MIKROTIK_HOST: "127.0.0.1",
+      MIKROTIK_PORT: String(port),
+      MIKROTIK_TRANSPORT: transport,
+      MIKROTIK_TLS: "false",
+      MIKROTIK_TIMEOUT_MS: "2000",
+    })[0];
+
+  const check = async (port: number, transport: "api" | "rest" = "api") => {
+    const d = device(port, transport);
+    const registry = new DeviceRegistry([d]);
+    const r = await checkConnection(d, () => registry.resolve().client);
+    await registry.closeAll();
+    return r;
+  };
+
+  it("explains a closed port", async () => {
+    const srv = net.createServer();
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    const port = (srv.address() as AddressInfo).port;
+    await new Promise((r) => srv.close(r));
+    const r = await check(port);
+    assert.equal(r.ok, false);
+    assert.match(r.howToFix!, /refused.*\/ip service set api disabled=no/s);
+  });
+
+  it("explains a router that drops the connection (available-from)", async () => {
+    const srv = net.createServer((s) => s.destroy());
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    const port = (srv.address() as AddressInfo).port;
+    for (const transport of ["api", "rest"] as const) {
+      const r = await check(port, transport);
+      assert.equal(r.ok, false, transport);
+      assert.match(r.howToFix!, /available-from/, transport);
+    }
+    await new Promise((r) => srv.close(r));
+  });
+
+  it("explains a port that never answers the API login", async () => {
+    const sockets: net.Socket[] = [];
+    const srv = net.createServer((s) => sockets.push(s));
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    const port = (srv.address() as AddressInfo).port;
+    const r = await check(port);
+    assert.match(r.howToFix!, /not the API service/);
+    sockets.forEach((s) => s.destroy());
+    await new Promise((r) => srv.close(r));
+  });
+
+  it("explains DNS and certificate errors", () => {
+    const d = device(8729);
+    assert.match(explainError(new Error("getaddrinfo ENOTFOUND nope.invalid"), d)!, /DNS/);
+    assert.match(explainError(new Error("self-signed certificate"), d)!, /Accept self-signed certificate/);
+    assert.equal(explainError(new Error("no such item"), d), undefined);
   });
 });
