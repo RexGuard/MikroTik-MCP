@@ -1,13 +1,14 @@
 {
   "name": "mikrotik-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MikroTik MCP server: let Claude and other AI assistants monitor and configure MikroTik RouterOS routers via the REST API (v7) or binary API (v6/v7)",
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc -p .",
     "test": "npm run build && node --test dist/test/*.test.js",
     "start": "node dist/src/index.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "build:mcpb": "node scripts/build-mcpb.mjs"
   },
   "keywords": [
     "mcp",
