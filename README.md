@@ -52,6 +52,15 @@ Both expose the full configuration tree that WinBox and the terminal use, so eve
 | `mikrotik_dhcp_leases` | DHCP leases |
 | `mikrotik_wireless_clients` | Wi-Fi registration table (wifi, wifiwave2, wireless, CAPsMAN) |
 | `mikrotik_arp_table` | ARP entries and discovered neighbors |
+| `mikrotik_export_config` | Configuration (or one section) as an `/export` script, secrets hidden by default |
+| `mikrotik_files` | List router files or read a text file |
+| `mikrotik_restore_backup` | Load a `.backup` and reboot (requires `confirm: true`) |
+| `mikrotik_import_config` | Run an `.rsc` script file (requires `confirm: true`) |
+| `mikrotik_move_rule` | Reorder a firewall rule |
+| `mikrotik_baseline_firewall` | Plan, then apply, a default-config style firewall for a WAN interface |
+| `mikrotik_wireguard_add_client` | Generate keys, add a WireGuard peer and return the client config |
+| `mikrotik_dhcp_server_setup` | Pool, DHCP network and server in one step |
+| `mikrotik_dns_resolve`, `mikrotik_dns_flush_cache` | Test DNS from the router, clear the cache |
 | `mikrotik_logs` | Recent log entries, filterable by topic or text |
 | `mikrotik_ping`, `mikrotik_traceroute` | Diagnostics from the router |
 | `mikrotik_firewall_add_rule` | Add a firewall rule, optionally above an existing one |
@@ -154,6 +163,7 @@ Then ask things like:
 - Start with `MIKROTIK_READ_ONLY=true` until you trust the setup.
 - Use a dedicated RouterOS user with only the policies you need.
 - Firewall, bridge and address changes can lock you out. Consider [Safe Mode](https://help.mikrotik.com/docs/display/ROS/Configuration+Management#ConfigurationManagement-SafeMode) or run `mikrotik_backup` first.
+- Set `MIKROTIK_HIDE_SENSITIVE=true` to replace passwords, Wi-Fi passphrases, WireGuard/IPsec keys and similar secrets with `***` in every tool result, so they never reach the AI model. (This also hides the private key in `mikrotik_wireguard_add_client` output.)
 - The plain binary API (8728) sends the password unencrypted; prefer REST over HTTPS or API-SSL (8729) outside a trusted LAN.
 
 ## Development
@@ -201,6 +211,10 @@ Examples: "Why is my internet slow?", "Which devices are using the most bandwidt
 - [MikroTik RouterOS REST API documentation](https://help.mikrotik.com/docs/display/ROS/REST+API)
 - [MikroTik RouterOS API documentation](https://help.mikrotik.com/docs/display/ROS/API)
 - [Model Context Protocol](https://modelcontextprotocol.io)
+
+## Acknowledgements
+
+Several tools (config export, backup restore and import, rule moving, baseline firewall, WireGuard client configs, DNS tests and secret hiding) were inspired by [wiresage/mikrotik-mcp](https://github.com/wiresage/mikrotik-mcp) by Jeff Nasseri and contributors, MIT License. They were reimplemented here for the REST and binary APIs; `src/redact.ts` adapts its list of sensitive key names.
 
 ## License
 

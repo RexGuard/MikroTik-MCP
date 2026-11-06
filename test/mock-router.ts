@@ -30,9 +30,21 @@ export class MockRouter {
     if (command === "/ping") {
       return { rows: Array.from({ length: Number(args.count ?? 1) }, (_, i) => ({ seq: String(i), host: args.address, time: "1ms" })) };
     }
+    if (command === "/execute") {
+      const m = /:resolve domain-name="([^"]+)"/.exec(args.script ?? "");
+      return { rows: [], ret: m ? (m[1] === "example.com" ? "93.184.215.14" : "") : "" };
+    }
+    if (command === "/system/backup/load" || command === "/import") return { rows: [] };
     const i = command.lastIndexOf("/");
     const menu = command.slice(0, i);
     const verb = command.slice(i + 1);
+    if (verb === "export") {
+      // Like RouterOS, write <file>.rsc; secrets only with show-sensitive.
+      const secret = "show-sensitive" in args ? "hunter2" : undefined;
+      const contents = `# export of ${menu || "/"}\n/user\nadd name=ops${secret ? ` password="${secret}"` : ""}\n`;
+      this.menus.get("/file")?.push({ ".id": `*${(this.nextId++).toString(16).toUpperCase()}`, name: `${args.file}.rsc`, type: "script", size: String(contents.length), contents });
+      return { rows: [] };
+    }
     const items = this.menus.get(menu);
     if (!items) throw new Error("no such command prefix");
     const byId = (id: string) => {
@@ -60,6 +72,16 @@ export class MockRouter {
       }
       case "remove":
         items.splice(items.indexOf(byId(args[".id"])), 1);
+        return { rows: [] };
+      case "move": {
+        const item = byId(args.numbers);
+        items.splice(items.indexOf(item), 1);
+        const dest = args.destination ? items.indexOf(byId(args.destination)) : items.length;
+        items.splice(dest, 0, item);
+        return { rows: [] };
+      }
+      case "flush":
+        items.length = 0;
         return { rows: [] };
       case "enable":
       case "disable":

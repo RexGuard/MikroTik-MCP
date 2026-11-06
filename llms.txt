@@ -22,6 +22,8 @@ Key facts:
 - mikrotik_interfaces, mikrotik_ip_addresses, mikrotik_routes, mikrotik_firewall_rules, mikrotik_dhcp_leases, mikrotik_wireless_clients, mikrotik_arp_table, mikrotik_logs: read state
 - mikrotik_ping, mikrotik_traceroute: diagnostics from the router
 - mikrotik_firewall_add_rule, mikrotik_address_list, mikrotik_backup, mikrotik_reboot: common changes
+- mikrotik_export_config, mikrotik_files, mikrotik_restore_backup, mikrotik_import_config: config export, files, restore
+- mikrotik_move_rule, mikrotik_baseline_firewall, mikrotik_wireguard_add_client, mikrotik_dhcp_server_setup, mikrotik_dns_resolve, mikrotik_dns_flush_cache: multi-step setup tasks
 - mikrotik_print, mikrotik_add, mikrotik_set, mikrotik_remove, mikrotik_set_enabled, mikrotik_run_command: any RouterOS menu or command
 
 ## Optional
