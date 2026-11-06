@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { hideSensitiveEnabled, redact } from "./redact.js";
+import { registerExtendedTools } from "./tools-extended.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { DeviceRegistry, DeviceConfig } from "./config.js";
@@ -19,7 +21,7 @@ const pathArg = z
   .string()
   .describe('RouterOS menu path, e.g. "/ip/address", "/interface/bridge/port" or "ip firewall filter".');
 
-const valueSchema = z.union([z.string(), z.number(), z.boolean()]);
+export const valueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 const propsArg = z
   .record(valueSchema)
@@ -46,7 +48,7 @@ function toArgs(props: Record<string, Value> | undefined): Record<string, string
   return Object.fromEntries(Object.entries(props ?? {}).map(([k, v]) => [k, toArg(v)]));
 }
 
-function toQuery(where: Record<string, Value> | undefined): string[] {
+export function toQuery(where: Record<string, Value> | undefined): string[] {
   return Object.entries(where ?? {}).map(([k, v]) => `${k}=${typeof v === "boolean" ? String(v) : v}`);
 }
 
@@ -54,7 +56,10 @@ function menu(path: string): string {
   return assertCommand(path);
 }
 
+const HIDE_SENSITIVE = hideSensitiveEnabled();
+
 function ok(data: unknown): CallToolResult {
+  if (HIDE_SENSITIVE) data = redact(data);
   return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 }
 
@@ -63,20 +68,20 @@ function fail(err: unknown): CallToolResult {
   return { isError: true, content: [{ type: "text", text: `MikroTik error: ${message}` }] };
 }
 
-function rowsResult(rows: RosRecord[], limit = DEFAULT_LIMIT, fromEnd = false) {
+export function rowsResult(rows: RosRecord[], limit = DEFAULT_LIMIT, fromEnd = false) {
   const total = rows.length;
   const slice = fromEnd ? rows.slice(-limit) : rows.slice(0, limit);
   return total > slice.length ? { total, returned: slice.length, truncated: true, rows: slice } : { total, rows: slice };
 }
 
-function assertWritable(device: DeviceConfig) {
+export function assertWritable(device: DeviceConfig) {
   if (device.readOnly) {
     throw new RosError(`Device "${device.name}" is configured read-only`, "write operations are disabled");
   }
 }
 
 /** Resolve an item `.id` either directly or from a filter that must match exactly one item. */
-async function resolveId(
+export async function resolveId(
   client: RosClient,
   path: string,
   id: string | undefined,
@@ -92,7 +97,7 @@ async function resolveId(
 }
 
 /** Run a command and swallow "no such command" errors, so optional menus (wifi, health, ...) don't fail a whole tool. */
-async function tryRun(client: RosClient, command: string, options = {}): Promise<RosRecord[] | undefined> {
+export async function tryRun(client: RosClient, command: string, options = {}): Promise<RosRecord[] | undefined> {
   try {
     return (await client.run(command, options)).rows;
   } catch {
@@ -605,4 +610,6 @@ export function registerTools(server: McpServer, registry: DeviceRegistry): void
       return { rebooting: device.name };
     },
   );
+
+  registerExtendedTools(tool);
 }
