@@ -5,6 +5,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { DeviceRegistry, DeviceConfig } from "./config.js";
 import { assertCommand, RosClient, RosError, RosRecord } from "./clients/types.js";
+import { checkConnection, explainError } from "./diagnose.js";
 
 type Value = string | number | boolean;
 
@@ -63,9 +64,11 @@ function ok(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 }
 
-function fail(err: unknown): CallToolResult {
+function fail(err: unknown, device?: DeviceConfig): CallToolResult {
   const message = err instanceof Error ? err.message : String(err);
-  return { isError: true, content: [{ type: "text", text: `MikroTik error: ${message}` }] };
+  const hint = device ? explainError(err, device) : undefined;
+  const text = `MikroTik error: ${message}` + (hint ? `\n\nLikely cause and fix: ${hint}` : "");
+  return { isError: true, content: [{ type: "text", text }] };
 }
 
 export function rowsResult(rows: RosRecord[], limit = DEFAULT_LIMIT, fromEnd = false) {
@@ -129,12 +132,14 @@ export function registerTools(server: McpServer, registry: DeviceRegistry): void
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (async (args: any) => {
+        let device: DeviceConfig | undefined;
         try {
-          const { device, client } = registry.resolve(args.device);
+          const resolved = registry.resolve(args.device);
+          device = resolved.device;
           if (config.write) assertWritable(device);
-          return ok(await handler(args, device, client));
+          return ok(await handler(args, device, resolved.client));
         } catch (e) {
-          return fail(e);
+          return fail(e, device);
         }
       }) as never,
     );
@@ -155,11 +160,36 @@ export function registerTools(server: McpServer, registry: DeviceRegistry): void
         registry.devices.map((d, i) => ({
           name: d.name,
           host: d.host,
+          port: d.port,
           transport: d.transport,
+          tls: d.tls,
           readOnly: d.readOnly,
           default: i === 0,
         })),
       ),
+  );
+
+  server.registerTool(
+    "mikrotik_check_connection",
+    {
+      title: "Check the router connection",
+      description:
+        "Test that the connector can reach and log in to a MikroTik router. Returns the router identity and RouterOS version, " +
+        "or the error with a plain-language cause and fix. Use it first when setting up, or when other tools fail to connect.",
+      inputSchema: { device: deviceArg },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (async (args: any) => {
+      let device: DeviceConfig;
+      try {
+        device = registry.lookup(args.device);
+      } catch (e) {
+        return fail(e);
+      }
+      const report = await checkConnection(device, () => registry.resolve(device.name).client);
+      return { ...ok(report), isError: !report.ok };
+    }) as never,
   );
 
   // ---- Generic access to the whole configuration tree ---------------------

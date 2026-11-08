@@ -9,7 +9,7 @@
 
 **Quick facts**
 
-- **What it is:** an MCP server (stdio) written in TypeScript for Node.js 20+.
+- **What it is:** an MCP server (stdio) written in TypeScript for Node.js 20+, also packaged as a one-click Claude Desktop extension (`.mcpb`).
 - **Works with:** Claude Desktop, Claude Code, Cursor, VS Code, Windsurf and any MCP client.
 - **Supports:** RouterOS v7 through the REST API, and RouterOS v6 and v7 through the binary API (ports 8728/8729).
 - **Hardware:** any MikroTik device running RouterOS, including hAP, hEX, RB, CCR, CRS, cAP, wAP and Cloud Hosted Router (CHR).
@@ -44,6 +44,7 @@ Both expose the full configuration tree that WinBox and the terminal use, so eve
 | Tool | What it does |
 |------|--------------|
 | `mikrotik_list_devices` | Configured routers |
+| `mikrotik_check_connection` | Test the connection and explain how to fix it if it fails |
 | `mikrotik_system_overview` | Identity, version, board, CPU/RAM/disk, uptime, clock, health, packages |
 | `mikrotik_interfaces` | Interfaces with state and counters |
 | `mikrotik_ip_addresses` | IPv4/IPv6 addresses |
@@ -72,45 +73,132 @@ Write tools carry MCP `readOnlyHint: false` / `destructiveHint` annotations so c
 
 ## Install
 
-Requires Node.js 20+.
+### Claude Desktop: one-click extension (recommended)
+
+1. **Download** [`mikrotik-mcp.mcpb`](https://github.com/RexGuard/MikroTik-MCP/releases/latest/download/mikrotik-mcp.mcpb) from the [latest release](https://github.com/RexGuard/MikroTik-MCP/releases/latest).
+2. **Double-click it** (or drag it onto Claude Desktop's **Settings → Extensions** page) and click **Install**.
+3. **Fill in the form**: router address, port, user name and password. Then turn the extension on.
+
+That's it. There is no Node.js to install, no `git clone`, and no JSON to edit: Claude Desktop runs the extension with its built-in Node.js and keeps the password in your system's credential store. Ask Claude **"Check the router connection"** to confirm it works; if it doesn't, the answer says what is wrong and how to fix it (see [Troubleshooting](#troubleshooting)).
+
+| Setting | What to enter |
+|---------|---------------|
+| Router address | The router's IP or DNS name, e.g. `192.168.88.1`. You can also paste `192.168.88.1:8729` or `https://192.168.88.1`. |
+| Port | `8728` (API, default), `8729` (API over TLS) or `443` (REST over HTTPS, RouterOS 7.1+). **Not** `8291`, which is WinBox. |
+| User name / Password | A RouterOS user whose group has the `api` policy (plus `rest-api` for port 443). |
+| Accept self-signed certificate | Leave on unless the router has a certificate your computer trusts. Only matters for 8729 and 443. |
+| Read-only mode | Turn on to let Claude look but not change anything. |
+
+The connector picks the protocol from the port, so you never choose between "API" and "REST" yourself.
+
+### Claude Code
+
+```bash
+claude mcp add mikrotik \
+  -e MIKROTIK_HOST=192.168.88.1 -e MIKROTIK_PORT=8728 \
+  -e MIKROTIK_USERNAME=mcp -e MIKROTIK_PASSWORD=CHANGE-ME \
+  -- npx -y github:RexGuard/MikroTik-MCP
+```
+
+This needs Node.js 20+ and git. On Windows, replace `-- npx` with `-- cmd /c npx`. Use `github:RexGuard/MikroTik-MCP`, not `npx mikrotik-mcp`: the `mikrotik-mcp` name on npm belongs to an unrelated project.
+
+To test the connection from a terminal before adding it to Claude:
+
+```bash
+MIKROTIK_HOST=192.168.88.1 MIKROTIK_PORT=8728 MIKROTIK_USERNAME=mcp MIKROTIK_PASSWORD=CHANGE-ME \
+  npx -y github:RexGuard/MikroTik-MCP --check
+```
+
+### Other MCP clients (Cursor, VS Code, Windsurf, manual Claude Desktop setup)
+
+Use `npx` as the command, so there is no file path to get right (on Windows, if the client cannot start `npx`, use `"command": "cmd"` and put `"/c", "npx"` at the start of `args`):
+
+```json
+{
+  "mcpServers": {
+    "mikrotik": {
+      "command": "npx",
+      "args": ["-y", "github:RexGuard/MikroTik-MCP"],
+      "env": {
+        "MIKROTIK_HOST": "192.168.88.1",
+        "MIKROTIK_PORT": "8728",
+        "MIKROTIK_USERNAME": "mcp",
+        "MIKROTIK_PASSWORD": "CHANGE-ME"
+      }
+    }
+  }
+}
+```
+
+### From source
 
 ```bash
 git clone https://github.com/RexGuard/MikroTik-MCP.git
-cd mikrotik-mcp
-npm install        # also builds into dist/
+cd MikroTik-MCP
+npm install            # also builds into dist/
+npm run build:mcpb     # optional: builds build/mikrotik-mcp.mcpb
 ```
+
+Then point your client at `node /full/path/to/MikroTik-MCP/dist/src/index.js`. On Windows, write the path in JSON with double backslashes (`C:\\Users\\you\\MikroTik-MCP\\dist\\src\\index.js`) or forward slashes.
 
 ## Prepare the router
 
-Create a dedicated user rather than using `admin`. For a read-only assistant use the built-in `read` group; for changes use `full` (or a custom group).
+The connector uses the RouterOS API service, which is separate from WinBox. Check it in the router terminal:
 
 ```routeros
-/user group add name=mcp policy=read,write,api,rest-api,test,ping,reboot,policy,sensitive
-/user add name=mcp group=mcp password=CHANGE-ME
-
-# RouterOS v7 REST API (HTTPS needs a certificate on www-ssl)
-/certificate add name=self common-name=router
-/certificate sign self
-/ip service set www-ssl certificate=self disabled=no
-
-# or the binary API (v6/v7)
-/ip service set api disabled=no address=192.168.88.0/24
+/ip service print
 ```
 
-Restrict the service `address=` to the network the MCP server runs on.
+The `api` line (port 8728) must not be disabled (`X`), and its `available-from` must be empty or include the address your computer connects from. Note that if you connect using a DNS name that points at your public IP, the router sees your public IP, not your LAN address.
 
-## Configure
+```routeros
+# turn the API on, allowing only your LAN (adjust to your network)
+/ip service set api disabled=no available-from=192.168.88.0/24
 
-### One router (environment variables)
+# a dedicated user (use group=read for a read-only assistant)
+/user group add name=mcp policy=read,write,api,rest-api,test,ping,reboot,policy,sensitive
+/user add name=mcp group=mcp password=CHANGE-ME
+```
+
+Encrypted options, for anything outside a trusted LAN:
+
+```routeros
+# API over TLS (port 8729)
+/certificate add name=api common-name=router
+/certificate sign api
+/ip service set api-ssl certificate=api disabled=no
+
+# or the REST API over HTTPS (port 443, RouterOS 7.1+)
+/ip service set www-ssl certificate=api disabled=no
+```
+
+Don't expose port 8728 to the internet: the plain API sends the password unencrypted. To reach a router remotely, use a VPN (WireGuard, Tailscale) and the router's private address.
+
+## Troubleshooting
+
+Every connection error comes with a plain-language cause and fix. You can also ask Claude to "check the router connection", or run the server with `--check` in a terminal. The common cases:
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "Port 8291 is the WinBox port" | WinBox's port was entered | Use 8728 (or 8729 / 443) |
+| "refused the connection" | The API service is off or on another port | `/ip service set api disabled=no`, check `/ip service print` |
+| "accepted the connection and closed it straight away" | Your IP is not in the service's `available-from` | Add your address, or connect via the LAN/VPN address instead of a public DNS name |
+| "No answer from ..." | Address unreachable from this computer, or a firewall drops it | `Test-NetConnection <ip> -Port 8728` (Windows) / `nc -vz <ip> 8728` |
+| "rejected the user name or password" | Wrong credentials, or the group lacks the `api` policy | `/user print`, `/user group print` |
+| "certificate is not trusted" | Self-signed certificate on 8729/443 | Turn on "Accept self-signed certificate" |
+
+## Configure (environment variables)
+
+The extension form fills these in for you. For other clients:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `MIKROTIK_HOST` | — | Router IP or hostname |
+| `MIKROTIK_HOST` | — | Router IP or hostname (also accepts `host:port`, `https://host`, `api-ssl://host`) |
+| `MIKROTIK_PORT` | 443 | Port; also selects the protocol (8728 API, 8729 API-SSL, 443 HTTPS REST, 80 HTTP REST, any other port: API) |
 | `MIKROTIK_USERNAME` | `admin` | User name |
 | `MIKROTIK_PASSWORD` | empty | Password |
-| `MIKROTIK_TRANSPORT` | `rest` | `rest` or `api` |
-| `MIKROTIK_PORT` | 443 / 80 / 8728 / 8729 | Override the port |
-| `MIKROTIK_TLS` | `true` for rest, `false` for api | Use HTTPS / API-SSL |
+| `MIKROTIK_TRANSPORT` | `auto` | Force `rest` or `api` (only needed for unusual custom ports) |
+| `MIKROTIK_TLS` | from the port | Force TLS on or off |
 | `MIKROTIK_INSECURE` | `false` | Accept self-signed certificates |
 | `MIKROTIK_READ_ONLY` | `false` | Block every write tool |
 | `MIKROTIK_TIMEOUT_MS` | `30000` | Request timeout |
@@ -119,38 +207,9 @@ Restrict the service `address=` to the network the MCP server runs on.
 
 Point `MIKROTIK_CONFIG` at a JSON file (see [`examples/devices.example.json`](examples/devices.example.json)) or put the same array in `MIKROTIK_DEVICES`. Every tool then takes an optional `device` argument; the first device is the default. Each device can set `"readOnly": true`.
 
-## Use with Claude
+## What to ask
 
-### Claude Desktop
-
-Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "mikrotik": {
-      "command": "node",
-      "args": ["/path/to/mikrotik-mcp/dist/src/index.js"],
-      "env": {
-        "MIKROTIK_HOST": "192.168.88.1",
-        "MIKROTIK_USERNAME": "mcp",
-        "MIKROTIK_PASSWORD": "CHANGE-ME",
-        "MIKROTIK_INSECURE": "true"
-      }
-    }
-  }
-}
-```
-
-### Claude Code
-
-```bash
-claude mcp add mikrotik \
-  -e MIKROTIK_HOST=192.168.88.1 -e MIKROTIK_USERNAME=mcp -e MIKROTIK_PASSWORD=CHANGE-ME -e MIKROTIK_INSECURE=true \
-  -- node /path/to/mikrotik-mcp/dist/src/index.js
-```
-
-Then ask things like:
+Once connected, ask things like:
 
 - "What's the CPU load and uptime on my router?"
 - "Which devices are on Wi-Fi right now?"
@@ -180,15 +239,19 @@ WinBox, the mobile app and the web UI all drive the same RouterOS configuration 
 
 ### How do I connect Claude to a MikroTik router?
 
-Install this server, enable the REST API (`www-ssl`) or the API service on the router, and add the server to Claude Desktop or Claude Code with the router's address and a RouterOS user (see [Use with Claude](#use-with-claude)). Claude can then query and configure the router in plain language.
+Download `mikrotik-mcp.mcpb` from the [latest release](https://github.com/RexGuard/MikroTik-MCP/releases/latest), double-click it, and enter the router's address, port (8728), user name and password. Make sure the router's `api` service is on (see [Prepare the router](#prepare-the-router)). Claude can then query and configure the router in plain language.
+
+### Can I use the WinBox port (8291)?
+
+No. WinBox uses its own private protocol. The connector uses MikroTik's documented API on 8728 (or 8729 with TLS, or the REST API on 443), which gives the same control. WinBox keeps working on 8291 alongside it.
 
 ### Does it work with RouterOS 6?
 
-Yes. Set `MIKROTIK_TRANSPORT=api` to use the binary API, which works on RouterOS v6 and v7. The REST API transport needs RouterOS v7.1 or newer.
+Yes. Use port 8728 (or 8729 for TLS); the connector then uses the binary API, which works on RouterOS v6 and v7. The REST API transport needs RouterOS v7.1 or newer.
 
 ### Does it work with ChatGPT, Cursor or other AI tools?
 
-It works with any client that supports the Model Context Protocol, including Claude Desktop, Claude Code, Cursor, VS Code (GitHub Copilot agent mode) and Windsurf. Use the same `command`, `args` and `env` settings shown for Claude Desktop.
+It works with any client that supports the Model Context Protocol, including Claude Desktop, Claude Code, Cursor, VS Code (GitHub Copilot agent mode) and Windsurf. Use the `npx` configuration shown under [Other MCP clients](#other-mcp-clients-cursor-vs-code-windsurf-manual-claude-desktop-setup).
 
 ### Can it run on the MikroTik router itself?
 

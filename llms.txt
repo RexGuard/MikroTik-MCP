@@ -4,7 +4,9 @@
 
 Key facts:
 - Repository: https://github.com/RexGuard/MikroTik-MCP
-- Transports: REST API over HTTPS (RouterOS 7.1+), binary API on ports 8728/8729 (RouterOS 6 and 7)
+- Install for Claude Desktop: download mikrotik-mcp.mcpb from https://github.com/RexGuard/MikroTik-MCP/releases/latest, double-click, enter router address, port, user name and password
+- Install for Claude Code / other clients: `npx -y github:RexGuard/MikroTik-MCP` with MIKROTIK_HOST, MIKROTIK_PORT, MIKROTIK_USERNAME, MIKROTIK_PASSWORD (the npm package named mikrotik-mcp is an unrelated project)
+- Transports: REST API over HTTPS (RouterOS 7.1+), binary API on ports 8728/8729 (RouterOS 6 and 7); chosen automatically from the port. WinBox port 8291 is not supported
 - Clients: Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, any MCP client (stdio)
 - Safety: read-only mode (MIKROTIK_READ_ONLY=true), per-device readOnly, destructive tools annotated, reboot requires confirm=true
 - Multi-router: MIKROTIK_CONFIG or MIKROTIK_DEVICES JSON array; every tool accepts an optional `device`
@@ -18,6 +20,7 @@ Key facts:
 ## Tools
 
 - mikrotik_list_devices: configured routers
+- mikrotik_check_connection: test the connection and explain the fix when it fails
 - mikrotik_system_overview: identity, version, board, CPU/RAM/disk, uptime, clock, health, packages
 - mikrotik_interfaces, mikrotik_ip_addresses, mikrotik_routes, mikrotik_firewall_rules, mikrotik_dhcp_leases, mikrotik_wireless_clients, mikrotik_arp_table, mikrotik_logs: read state
 - mikrotik_ping, mikrotik_traceroute: diagnostics from the router

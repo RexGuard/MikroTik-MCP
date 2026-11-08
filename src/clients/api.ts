@@ -163,13 +163,15 @@ export class ApiClient implements RosClient {
     this.socket = socket;
 
     // Post-6.43 login: plain-text credentials (use API-SSL on untrusted networks).
-    await this.send(["/login", `=name=${this.opts.username}`, `=password=${this.opts.password}`]).catch((e) => {
+    // A short login timeout makes a wrong port (WinBox, web UI) fail fast instead of hanging.
+    const loginTimeout = Math.min(timeout, 10_000);
+    await this.send(["/login", `=name=${this.opts.username}`, `=password=${this.opts.password}`], loginTimeout).catch((e) => {
       socket.destroy();
       throw new RosError("Login failed", e instanceof Error ? e.message : String(e));
     });
   }
 
-  private send(words: string[]): Promise<RosResult> {
+  private send(words: string[], timeoutMs = this.opts.timeoutMs ?? 30_000): Promise<RosResult> {
     const socket = this.socket;
     if (!socket) return Promise.reject(new RosError("Not connected"));
     const tag = String(this.nextTag++);
@@ -178,7 +180,7 @@ export class ApiClient implements RosClient {
         this.pending.delete(tag);
         socket.write(encodeSentence(["/cancel", `=tag=${tag}`]));
         reject(new RosError(`Command ${words[0]} timed out`));
-      }, this.opts.timeoutMs ?? 30_000);
+      }, timeoutMs);
       this.pending.set(tag, { rows: [], resolve, reject, timer });
       socket.write(encodeSentence([...words, `.tag=${tag}`]));
     });
