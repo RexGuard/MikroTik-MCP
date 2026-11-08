@@ -1,0 +1,246 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/dist/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "mikrotik-mcp",
+  "display_name": "MikroTik RouterOS",
+  "version": "0.2.0",
+  "description": "Monitor and configure MikroTik RouterOS routers from Claude: status, interfaces, firewall, DHCP, Wi-Fi clients, logs, backups and any RouterOS setting.",
+  "long_description": "Connects Claude to a MikroTik router over the official RouterOS API (port 8728, or 8729 with TLS, RouterOS 6 and 7) or the REST API (port 443, RouterOS 7.1+). Enter the router's address, port, user name and password, and the connector works out the rest from the port.\n\nBefore installing, make sure the API service is on and allows this computer: in the router terminal run `/ip service print`. The `api` line must not be disabled, and its `available-from` must include the address this computer connects from (or be empty). WinBox's port 8291 cannot be used.\n\nAsk Claude to \"check the router connection\" after installing. If something is wrong, it explains the cause and the fix.",
+  "author": {
+    "name": "RexGuard",
+    "url": "https://github.com/RexGuard"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RexGuard/MikroTik-MCP"
+  },
+  "homepage": "https://github.com/RexGuard/MikroTik-MCP",
+  "documentation": "https://github.com/RexGuard/MikroTik-MCP#readme",
+  "support": "https://github.com/RexGuard/MikroTik-MCP/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "MIKROTIK_HOST": "${user_config.host}",
+        "MIKROTIK_PORT": "${user_config.port}",
+        "MIKROTIK_USERNAME": "${user_config.username}",
+        "MIKROTIK_PASSWORD": "${user_config.password}",
+        "MIKROTIK_INSECURE": "${user_config.insecure}",
+        "MIKROTIK_READ_ONLY": "${user_config.read_only}",
+        "MIKROTIK_HIDE_SENSITIVE": "${user_config.hide_sensitive}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "mikrotik_list_devices",
+      "description": "List MikroTik devices"
+    },
+    {
+      "name": "mikrotik_check_connection",
+      "description": "Check the router connection"
+    },
+    {
+      "name": "mikrotik_print",
+      "description": "Read any RouterOS menu"
+    },
+    {
+      "name": "mikrotik_add",
+      "description": "Add a RouterOS item"
+    },
+    {
+      "name": "mikrotik_set",
+      "description": "Change a RouterOS item or setting"
+    },
+    {
+      "name": "mikrotik_remove",
+      "description": "Remove a RouterOS item"
+    },
+    {
+      "name": "mikrotik_set_enabled",
+      "description": "Enable or disable a RouterOS item"
+    },
+    {
+      "name": "mikrotik_run_command",
+      "description": "Run any RouterOS command"
+    },
+    {
+      "name": "mikrotik_system_overview",
+      "description": "System overview"
+    },
+    {
+      "name": "mikrotik_interfaces",
+      "description": "List interfaces"
+    },
+    {
+      "name": "mikrotik_ip_addresses",
+      "description": "List IP addresses"
+    },
+    {
+      "name": "mikrotik_routes",
+      "description": "List routes"
+    },
+    {
+      "name": "mikrotik_firewall_rules",
+      "description": "List firewall rules"
+    },
+    {
+      "name": "mikrotik_dhcp_leases",
+      "description": "List DHCP leases"
+    },
+    {
+      "name": "mikrotik_wireless_clients",
+      "description": "List wireless clients"
+    },
+    {
+      "name": "mikrotik_arp_table",
+      "description": "ARP table and neighbors"
+    },
+    {
+      "name": "mikrotik_logs",
+      "description": "Read system log"
+    },
+    {
+      "name": "mikrotik_ping",
+      "description": "Ping from the router"
+    },
+    {
+      "name": "mikrotik_traceroute",
+      "description": "Traceroute from the router"
+    },
+    {
+      "name": "mikrotik_firewall_add_rule",
+      "description": "Add a firewall rule"
+    },
+    {
+      "name": "mikrotik_address_list",
+      "description": "Manage firewall address lists"
+    },
+    {
+      "name": "mikrotik_backup",
+      "description": "Create a backup"
+    },
+    {
+      "name": "mikrotik_reboot",
+      "description": "Reboot the router"
+    },
+    {
+      "name": "mikrotik_export_config",
+      "description": "Show the configuration as an export script"
+    },
+    {
+      "name": "mikrotik_files",
+      "description": "List or read router files"
+    },
+    {
+      "name": "mikrotik_restore_backup",
+      "description": "Restore a backup (reboots the router)"
+    },
+    {
+      "name": "mikrotik_import_config",
+      "description": "Run an .rsc script file"
+    },
+    {
+      "name": "mikrotik_move_rule",
+      "description": "Reorder a firewall rule"
+    },
+    {
+      "name": "mikrotik_baseline_firewall",
+      "description": "Plan or apply a baseline firewall"
+    },
+    {
+      "name": "mikrotik_wireguard_add_client",
+      "description": "Add a WireGuard client and get its config"
+    },
+    {
+      "name": "mikrotik_dhcp_server_setup",
+      "description": "Set up a DHCP server"
+    },
+    {
+      "name": "mikrotik_dns_resolve",
+      "description": "Resolve a name from the router"
+    },
+    {
+      "name": "mikrotik_dns_flush_cache",
+      "description": "Flush the DNS cache"
+    }
+  ],
+  "keywords": [
+    "mikrotik",
+    "routeros",
+    "router",
+    "network",
+    "firewall",
+    "winbox",
+    "wifi"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
+  "user_config": {
+    "host": {
+      "type": "string",
+      "title": "Router address",
+      "description": "IP address or DNS name of the router, for example 192.168.88.1. It must be reachable from this computer, and allowed by the API service's available-from list on the router.",
+      "required": true
+    },
+    "port": {
+      "type": "number",
+      "title": "Port",
+      "description": "8728 = API (RouterOS 6 and 7), 8729 = API over TLS, 443 = REST over HTTPS (RouterOS 7.1+). Not 8291: that is WinBox, which the connector cannot use.",
+      "default": 8728,
+      "min": 1,
+      "max": 65535,
+      "required": false
+    },
+    "username": {
+      "type": "string",
+      "title": "User name",
+      "description": "RouterOS user. Its group needs the api policy (plus rest-api for port 443). Use a group without write for read-only access.",
+      "required": true
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "description": "Password of that RouterOS user. Stored in your system's secure credential store.",
+      "sensitive": true,
+      "default": "",
+      "required": false
+    },
+    "insecure": {
+      "type": "boolean",
+      "title": "Accept self-signed certificate",
+      "description": "Needed for ports 8729 and 443 unless the router has a certificate your computer trusts. The connection stays encrypted. No effect on port 8728.",
+      "default": true,
+      "required": false
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read-only mode",
+      "description": "Block every change, so Claude can only look at the router.",
+      "default": false,
+      "required": false
+    },
+    "hide_sensitive": {
+      "type": "boolean",
+      "title": "Hide passwords and keys from Claude",
+      "description": "Replace passwords, Wi-Fi passphrases, WireGuard and IPsec keys with *** in everything the connector returns. Also hides the private key in new WireGuard client configs.",
+      "default": false,
+      "required": false
+    }
+  }
+}

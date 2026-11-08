@@ -1,8 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { hideSensitiveEnabled, redact } from "./redact.js";
+import { registerExtendedTools } from "./tools-extended.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { DeviceRegistry, DeviceConfig } from "./config.js";
 import { assertCommand, RosClient, RosError, RosRecord } from "./clients/types.js";
+import { checkConnection, explainError } from "./diagnose.js";
 
 type Value = string | number | boolean;
 
@@ -19,7 +22,7 @@ const pathArg = z
   .string()
   .describe('RouterOS menu path, e.g. "/ip/address", "/interface/bridge/port" or "ip firewall filter".');
 
-const valueSchema = z.union([z.string(), z.number(), z.boolean()]);
+export const valueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 const propsArg = z
   .record(valueSchema)
@@ -46,7 +49,7 @@ function toArgs(props: Record<string, Value> | undefined): Record<string, string
   return Object.fromEntries(Object.entries(props ?? {}).map(([k, v]) => [k, toArg(v)]));
 }
 
-function toQuery(where: Record<string, Value> | undefined): string[] {
+export function toQuery(where: Record<string, Value> | undefined): string[] {
   return Object.entries(where ?? {}).map(([k, v]) => `${k}=${typeof v === "boolean" ? String(v) : v}`);
 }
 
@@ -54,29 +57,34 @@ function menu(path: string): string {
   return assertCommand(path);
 }
 
+const HIDE_SENSITIVE = hideSensitiveEnabled();
+
 function ok(data: unknown): CallToolResult {
+  if (HIDE_SENSITIVE) data = redact(data);
   return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 }
 
-function fail(err: unknown): CallToolResult {
+function fail(err: unknown, device?: DeviceConfig): CallToolResult {
   const message = err instanceof Error ? err.message : String(err);
-  return { isError: true, content: [{ type: "text", text: `MikroTik error: ${message}` }] };
+  const hint = device ? explainError(err, device) : undefined;
+  const text = `MikroTik error: ${message}` + (hint ? `\n\nLikely cause and fix: ${hint}` : "");
+  return { isError: true, content: [{ type: "text", text }] };
 }
 
-function rowsResult(rows: RosRecord[], limit = DEFAULT_LIMIT, fromEnd = false) {
+export function rowsResult(rows: RosRecord[], limit = DEFAULT_LIMIT, fromEnd = false) {
   const total = rows.length;
   const slice = fromEnd ? rows.slice(-limit) : rows.slice(0, limit);
   return total > slice.length ? { total, returned: slice.length, truncated: true, rows: slice } : { total, rows: slice };
 }
 
-function assertWritable(device: DeviceConfig) {
+export function assertWritable(device: DeviceConfig) {
   if (device.readOnly) {
     throw new RosError(`Device "${device.name}" is configured read-only`, "write operations are disabled");
   }
 }
 
 /** Resolve an item `.id` either directly or from a filter that must match exactly one item. */
-async function resolveId(
+export async function resolveId(
   client: RosClient,
   path: string,
   id: string | undefined,
@@ -92,7 +100,7 @@ async function resolveId(
 }
 
 /** Run a command and swallow "no such command" errors, so optional menus (wifi, health, ...) don't fail a whole tool. */
-async function tryRun(client: RosClient, command: string, options = {}): Promise<RosRecord[] | undefined> {
+export async function tryRun(client: RosClient, command: string, options = {}): Promise<RosRecord[] | undefined> {
   try {
     return (await client.run(command, options)).rows;
   } catch {
@@ -124,12 +132,14 @@ export function registerTools(server: McpServer, registry: DeviceRegistry): void
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (async (args: any) => {
+        let device: DeviceConfig | undefined;
         try {
-          const { device, client } = registry.resolve(args.device);
+          const resolved = registry.resolve(args.device);
+          device = resolved.device;
           if (config.write) assertWritable(device);
-          return ok(await handler(args, device, client));
+          return ok(await handler(args, device, resolved.client));
         } catch (e) {
-          return fail(e);
+          return fail(e, device);
         }
       }) as never,
     );
@@ -150,11 +160,36 @@ export function registerTools(server: McpServer, registry: DeviceRegistry): void
         registry.devices.map((d, i) => ({
           name: d.name,
           host: d.host,
+          port: d.port,
           transport: d.transport,
+          tls: d.tls,
           readOnly: d.readOnly,
           default: i === 0,
         })),
       ),
+  );
+
+  server.registerTool(
+    "mikrotik_check_connection",
+    {
+      title: "Check the router connection",
+      description:
+        "Test that the connector can reach and log in to a MikroTik router. Returns the router identity and RouterOS version, " +
+        "or the error with a plain-language cause and fix. Use it first when setting up, or when other tools fail to connect.",
+      inputSchema: { device: deviceArg },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (async (args: any) => {
+      let device: DeviceConfig;
+      try {
+        device = registry.lookup(args.device);
+      } catch (e) {
+        return fail(e);
+      }
+      const report = await checkConnection(device, () => registry.resolve(device.name).client);
+      return { ...ok(report), isError: !report.ok };
+    }) as never,
   );
 
   // ---- Generic access to the whole configuration tree ---------------------
@@ -605,4 +640,6 @@ export function registerTools(server: McpServer, registry: DeviceRegistry): void
       return { rebooting: device.name };
     },
   );
+
+  registerExtendedTools(tool);
 }
