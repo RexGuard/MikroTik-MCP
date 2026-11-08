@@ -32,7 +32,8 @@
         "MIKROTIK_USERNAME": "${user_config.username}",
         "MIKROTIK_PASSWORD": "${user_config.password}",
         "MIKROTIK_INSECURE": "${user_config.insecure}",
-        "MIKROTIK_READ_ONLY": "${user_config.read_only}"
+        "MIKROTIK_READ_ONLY": "${user_config.read_only}",
+        "MIKROTIK_HIDE_SENSITIVE": "${user_config.hide_sensitive}"
       }
     }
   },
@@ -128,6 +129,46 @@
     {
       "name": "mikrotik_reboot",
       "description": "Reboot the router"
+    },
+    {
+      "name": "mikrotik_export_config",
+      "description": "Show the configuration as an export script"
+    },
+    {
+      "name": "mikrotik_files",
+      "description": "List or read router files"
+    },
+    {
+      "name": "mikrotik_restore_backup",
+      "description": "Restore a backup (reboots the router)"
+    },
+    {
+      "name": "mikrotik_import_config",
+      "description": "Run an .rsc script file"
+    },
+    {
+      "name": "mikrotik_move_rule",
+      "description": "Reorder a firewall rule"
+    },
+    {
+      "name": "mikrotik_baseline_firewall",
+      "description": "Plan or apply a baseline firewall"
+    },
+    {
+      "name": "mikrotik_wireguard_add_client",
+      "description": "Add a WireGuard client and get its config"
+    },
+    {
+      "name": "mikrotik_dhcp_server_setup",
+      "description": "Set up a DHCP server"
+    },
+    {
+      "name": "mikrotik_dns_resolve",
+      "description": "Resolve a name from the router"
+    },
+    {
+      "name": "mikrotik_dns_flush_cache",
+      "description": "Flush the DNS cache"
     }
   ],
   "keywords": [
@@ -191,6 +232,13 @@
       "type": "boolean",
       "title": "Read-only mode",
       "description": "Block every change, so Claude can only look at the router.",
+      "default": false,
+      "required": false
+    },
+    "hide_sensitive": {
+      "type": "boolean",
+      "title": "Hide passwords and keys from Claude",
+      "description": "Replace passwords, Wi-Fi passphrases, WireGuard and IPsec keys with *** in everything the connector returns. Also hides the private key in new WireGuard client configs.",
       "default": false,
       "required": false
     }
