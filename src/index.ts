@@ -69,6 +69,10 @@ async function serve() {
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+  // The MCP client quitting closes stdin. Without this, an open router session keeps the process (and the
+  // session on the router) alive as an orphan, since not every client also sends a signal.
+  process.stdin.on("end", shutdown);
+  process.stdin.on("close", shutdown);
 
   await server.connect(new StdioServerTransport());
   const summary = devices.map((d) => `${d.name}=${d.host}:${d.port}/${d.transport}${d.tls ? "+tls" : ""}`).join(", ");
