@@ -4,7 +4,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ApiClient, encodeLength, encodeSentence, SentenceDecoder } from "../src/clients/api.js";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import net from "node:net";
 import { AddressInfo } from "node:net";
 import { configProblem, DeviceRegistry, loadDevices, parseAddress } from "../src/config.js";
@@ -264,6 +266,66 @@ describe("ApiClient", () => {
     assert.deepEqual(results.map((r) => r.rows.length), [3, 1, 150]);
     await c.close();
     await srv.close();
+  });
+
+  it("reconnects after the connection silently dies", async () => {
+    const router = new MockRouter();
+    const srv = await router.listenApi();
+    // A proxy that can turn into a black hole, like a NAT entry or VPN path that vanished while the computer slept.
+    let blackHole = false;
+    const pairs: net.Socket[] = [];
+    const proxy = net.createServer((down) => {
+      const up = net.connect(srv.port, "127.0.0.1");
+      let dead = false; // latches: once a connection has lost data it never recovers
+      const alive = () => !(dead ||= blackHole);
+      pairs.push(down, up);
+      down.on("data", (d) => alive() && up.write(d));
+      up.on("data", (d) => alive() && down.write(d));
+      for (const s of [down, up]) s.on("error", () => undefined);
+    });
+    await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+    const port = (proxy.address() as AddressInfo).port;
+    const c = new ApiClient({ host: "127.0.0.1", port, username: "admin", password: "secret", timeoutMs: 300 });
+
+    try {
+      assert.equal((await c.run("/interface/print")).rows.length, 3);
+      blackHole = true;
+      const [timedOut, alsoLost] = await Promise.allSettled([c.run("/interface/print"), c.run("/ip/address/print")]);
+      assert.match(String((timedOut as PromiseRejectedResult).reason), /timed out/);
+      assert.equal(alsoLost.status, "rejected");
+      blackHole = false; // the path is back, but the old connection stays dead
+      assert.equal((await c.run("/interface/print")).rows.length, 3);
+    } finally {
+      await c.close();
+      pairs.forEach((s) => s.destroy());
+      await new Promise((r) => proxy.close(r));
+      await srv.close();
+    }
+  });
+});
+
+describe("server process", () => {
+  it("exits when the MCP client closes stdin, even with a router session open", async () => {
+    const router = new MockRouter();
+    const srv = await router.listenApi();
+    const child = spawn(process.execPath, [fileURLToPath(new URL("../src/index.js", import.meta.url))], {
+      env: { ...process.env, MIKROTIK_HOST: `127.0.0.1:${srv.port}`, MIKROTIK_USERNAME: "admin", MIKROTIK_PASSWORD: "secret" },
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    const exited = new Promise<number | null>((r) => child.once("exit", (code) => r(code)));
+    const send = (msg: object) => child.stdin.write(JSON.stringify(msg) + "\n");
+    send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "t", version: "0" } } });
+    send({ jsonrpc: "2.0", method: "notifications/initialized" });
+    send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "mikrotik_interfaces", arguments: {} } });
+    let out = "";
+    await new Promise<void>((r) => child.stdout.on("data", (d) => (out += d).includes('"id":2') && r()));
+    assert.match(out, /ether1/);
+
+    child.stdin.end();
+    const code = await Promise.race([exited, new Promise<string>((r) => setTimeout(() => r("still running"), 5000))]);
+    child.kill("SIGKILL");
+    await srv.close();
+    assert.equal(code, 0);
   });
 });
 

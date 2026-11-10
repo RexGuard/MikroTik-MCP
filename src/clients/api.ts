@@ -100,6 +100,8 @@ export class ApiClient implements RosClient {
   private socket?: net.Socket;
   private connecting?: Promise<void>;
   private nextTag = 1;
+  /** Counts chunks received from the router, to tell a slow command from a dead connection. */
+  private rxCount = 0;
   private readonly pending = new Map<string, Pending>();
 
   constructor(private readonly opts: ApiClientOptions) {}
@@ -147,18 +149,22 @@ export class ApiClient implements RosClient {
     });
     socket.setTimeout(0);
     socket.removeAllListeners("error");
+    // Lets the OS notice a peer that vanished (router reboot, VPN drop, laptop sleep) while the session sits idle.
+    socket.setKeepAlive(true, 30_000);
 
     const decoder = new SentenceDecoder();
     socket.on("data", (chunk: Buffer) => {
+      this.rxCount++;
       for (const sentence of decoder.push(chunk)) this.onSentence(sentence);
     });
-    socket.on("error", (e) => this.failAll(new RosError("Connection error", e.message)));
+    // A connection that was already given up on must not fail commands running on its replacement.
+    socket.on("error", (e) => {
+      if (this.socket === socket) this.failAll(new RosError("Connection error", e.message));
+    });
     socket.on("close", () => {
+      if (this.socket !== socket) return;
       this.failAll(new RosError("Connection closed by router"));
-      if (this.socket === socket) {
-        this.socket = undefined;
-        this.connecting = undefined;
-      }
+      this.forget(socket);
     });
     this.socket = socket;
 
@@ -175,11 +181,20 @@ export class ApiClient implements RosClient {
     const socket = this.socket;
     if (!socket) return Promise.reject(new RosError("Not connected"));
     const tag = String(this.nextTag++);
+    const rxBefore = this.rxCount;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(tag);
-        socket.write(encodeSentence(["/cancel", `=tag=${tag}`]));
         reject(new RosError(`Command ${words[0]} timed out`));
+        if (this.rxCount !== rxBefore) {
+          socket.write(encodeSentence(["/cancel", `=tag=${tag}`]));
+        } else {
+          // Total silence since the command was sent: the connection is most likely dead without the OS
+          // knowing yet. Drop it so the next command reconnects instead of timing out again.
+          this.forget(socket);
+          this.failAll(new RosError("Connection to the router was lost", "no reply, timed out"));
+          socket.destroy();
+        }
       }, timeoutMs);
       this.pending.set(tag, { rows: [], resolve, reject, timer });
       socket.write(encodeSentence([...words, `.tag=${tag}`]));
@@ -219,6 +234,14 @@ export class ApiClient implements RosClient {
         if (p.trap) p.reject(new RosError(p.trap.message ?? "Command failed", p.trap.category ? `category ${p.trap.category}` : undefined));
         else p.resolve({ rows: p.rows, ret: attrs.ret });
         break;
+    }
+  }
+
+  /** Stop using `socket`, so the next command opens a new connection. */
+  private forget(socket: net.Socket): void {
+    if (this.socket === socket) {
+      this.socket = undefined;
+      this.connecting = undefined;
     }
   }
 
